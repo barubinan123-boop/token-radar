@@ -227,6 +227,10 @@
   function controls() {
     var categories = Array.from(new Set(DATA.rows.map(function (r) { return r.category || 'Other'; }))).sort();
     // Chains by how many board rows name them, most common first, capped so the list stays short.
+    // The counts in the labels come from the same rows the table shows, so a chain that
+    // appears nowhere on the board never appears in the filter either.
+    // The filter is shareable: the chosen chain is written to the URL hash alongside
+    // the search text and the category, and Clear filters resets all three at once.
     var chainCounts = {};
     DATA.rows.forEach(function (r) { (r.chains || []).forEach(function (c) { chainCounts[c] = (chainCounts[c] || 0) + 1; }); });
     var chains = Object.keys(chainCounts).sort(function (a, b) { return chainCounts[b] - chainCounts[a] || (a < b ? -1 : 1); }).slice(0, 12);
