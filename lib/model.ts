@@ -16,7 +16,14 @@
 //                (a protocol live on more chains reaches more farmers and more
 //                liquidity, so its launch is worth more; capped so one extra
 //                chain can never dominate the TVL term)
-//   implied    = max(1, round(base x growthMult x maturityMult x chainMult))
+//   focusMult  = 1 + FOCUS_WEIGHT x (1 - min(chains, 5) / 5)
+//                (the same TVL spread over fewer chains is deeper liquidity per
+//                chain, so a focused protocol launches stronger; a protocol on
+//                five or more chains gets no focus bonus at all)
+//   implied    = max(1, round(base x growthMult x maturityMult x chainMult x focusMult))
+//
+// The constants are the radar-2 model's, stated in the dashboard and changeable in the model sandbox.
+// No protocol name is ever special-cased: the same function scores every row.
 //
 // The constants are the house model's, stated in the dashboard and changeable in the model sandbox. No
 // protocol name is ever special-cased: the same function scores every row.
@@ -56,6 +63,8 @@ export interface ModelConstants {
   unknown_age_days: number;
   chain_weight: number;
   chain_cap: number;
+  focus_weight: number;
+  focus_chains: number;
 }
 
 export const MODEL: ModelConstants = {
@@ -69,10 +78,12 @@ export const MODEL: ModelConstants = {
   unknown_age_days: 365,
   chain_weight: 0.03,
   chain_cap: 4,
+  focus_weight: 0.05,
+  focus_chains: 5,
 };
 
 /** The model's version label: the dashboard names it and the rules quote it. */
-export const MODEL_VERSION = 'radar-2';
+export const MODEL_VERSION = 'radar-3';
 
 /** How many pre-token protocols below the watchlist floor the early radar carries, by TVL. */
 export const EARLY_ROWS = 240;
@@ -109,6 +120,7 @@ export interface BoardRow {
     growth_multiplier: number;
     maturity_multiplier: number;
     chain_multiplier: number;
+    focus_multiplier: number;
     age_days: number | null;
   };
   farm_steps: string[];
@@ -130,6 +142,7 @@ export interface RadarRow {
   growth_multiplier: number;
   maturity_multiplier: number;
   chain_multiplier: number;
+  focus_multiplier: number;
 }
 
 /** A live-token protocol: it already trades, so the board shows the market's own value, not a model's. */
@@ -182,8 +195,8 @@ export function ageDays(asOf: string, listedAt: string | null): number | null {
   return Math.max(0, Math.floor((a - b) / DAY_MS));
 }
 
-/** The four multipliers and the implied value one protocol gets under `model`. */
-export function impliedValue(protocol: SnapshotProtocol, asOf: string, model: ModelConstants): { implied: number; growthPct: number; growthMult: number; maturityMult: number; chainMult: number; age: number | null } {
+/** The five multipliers and the implied value one protocol gets under `model`. */
+export function impliedValue(protocol: SnapshotProtocol, asOf: string, model: ModelConstants): { implied: number; growthPct: number; growthMult: number; maturityMult: number; chainMult: number; focusMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
   const rawGrowth = finite(protocol.change_7d, 0);
   const growthPct = Math.min(model.growth_cap, Math.max(model.growth_floor, rawGrowth));
@@ -192,9 +205,11 @@ export function impliedValue(protocol: SnapshotProtocol, asOf: string, model: Mo
   const maturityMult = model.maturity_floor + (Math.min(Math.max(ageForModel, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
   const extraChains = Math.min(Math.max(protocol.chains.length - 1, 0), model.chain_cap);
   const chainMult = 1 + extraChains * model.chain_weight;
+  const spread = Math.min(Math.max(protocol.chains.length, 1), model.focus_chains);
+  const focusMult = 1 + model.focus_weight * (1 - spread / model.focus_chains);
   const base = protocol.tvl_usd * model.base_multiple;
-  const implied = Math.max(1, Math.round(base * growthMult * maturityMult * chainMult));
-  return { implied, growthPct, growthMult, maturityMult, chainMult, age };
+  const implied = Math.max(1, Math.round(base * growthMult * maturityMult * chainMult * focusMult));
+  return { implied, growthPct, growthMult, maturityMult, chainMult, focusMult, age };
 }
 
 /** DefiLlama's version-marker rule: a name ending in a release is a pool of another protocol. */
@@ -242,8 +257,8 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
   for (const p of early) chosen.set(p.slug, p);
 
   const scored = [...chosen.values()].map((p) => {
-    const { implied, growthPct, growthMult, maturityMult, chainMult, age } = impliedValue(p, snapshot.as_of, model);
-    return { p, implied, growthPct, growthMult, maturityMult, chainMult, age };
+    const { implied, growthPct, growthMult, maturityMult, chainMult, focusMult, age } = impliedValue(p, snapshot.as_of, model);
+    return { p, implied, growthPct, growthMult, maturityMult, chainMult, focusMult, age };
   });
   scored.sort((a, b) => b.implied - a.implied || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
   return scored.map((s, i) => ({
@@ -267,6 +282,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       growth_multiplier: round4(s.growthMult),
       maturity_multiplier: round4(s.maturityMult),
       chain_multiplier: round4(s.chainMult),
+      focus_multiplier: round4(s.focusMult),
       age_days: s.age,
     },
     farm_steps: farmSteps(s.p, s.age).map(stepText),
@@ -290,55 +306,75 @@ function chainOf(p: SnapshotProtocol): string {
 
 /** How much capital one farm position needs, from the protocol's own TVL. */
 function capitalFor(p: SnapshotProtocol): number {
-  if (p.tvl_usd >= 5_000_000_000) return 250;
-  if (p.tvl_usd >= 1_000_000_000) return 150;
-  if (p.tvl_usd >= 100_000_000) return 100;
+  const tiers: Array<[number, number]> = [
+    [5_000_000_000, 250],
+    [1_000_000_000, 150],
+    [100_000_000, 100],
+  ];
+  for (const [floor, capital] of tiers) if (p.tvl_usd >= floor) return capital;
   return 50;
 }
 
 /** How long to hold, from the protocol's age: younger protocols get a longer qualifying window. */
 function holdDaysFor(age: number | null): number {
   if (age === null) return 30;
-  if (age < 180) return 60;
-  if (age < 365) return 45;
-  return 30;
+  const tiers: Array<[number, number]> = [
+    [365, 30],
+    [180, 45],
+  ];
+  for (const [floor, days] of tiers) if (age >= floor) return days;
+  return 60;
 }
+
+/**
+ * The category's core action, as a table: each row names the category words it matches and the
+ * sentence the farmer follows, with {capital}, {name} and {chain} filled in. The first matching
+ * row wins; a category no row names falls through to the generic deposit at the end.
+ */
+const ACTIONS: Array<{ words: string[]; text: string }> = [
+  { words: ['lend', 'cdp', 'collateral'], text: 'Supply ${capital} of USDC to ${name} on ${chain} and keep the position open.' },
+  { words: ['dex', 'yield', 'leveraged farm'], text: 'Provide ${capital} of liquidity to ${name}\u2019s main pool on ${chain} and keep the position open.' },
+  { words: ['bridge'], text: 'Bridge ${capital} of USDC to ${chain} through ${name} and use the bridged funds in its app.' },
+  { words: ['staking', 'restak'], text: 'Stake ${capital} of the chain\u2019s staking asset through ${name} and keep the receipt.' },
+  { words: ['perpetual', 'derivative'], text: 'Deposit ${capital} of USDC as margin on ${name} and open one small hedge.' },
+  { words: ['prediction'], text: 'Fund ${capital} and place one market position on ${name}.' },
+  { words: ['curator', 'allocator'], text: 'Deposit ${capital} into a ${name} vault on ${chain} and keep the shares.' },
+  { words: ['stable'], text: 'Mint or deposit ${capital} of the stable asset through ${name} on ${chain}.' },
+  { words: ['rwa'], text: 'Mint ${capital} of the protocol\u2019s yield asset on ${chain} and hold it.' },
+  { words: ['insurance'], text: 'Buy ${capital} of cover from ${name} on ${chain} and keep the policy.' },
+];
 
 /** The category's one action, in the words a farmer can follow. */
 function actionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const c = (p.category ?? '').toLowerCase();
-  const name = p.name;
-  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return `Supply $${capital} of USDC to ${name} on ${chain} and keep the position open.`;
-  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm')) return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} and keep the position open.`;
-  if (c.includes('bridge')) return `Bridge $${capital} of USDC to ${chain} through ${name} and use the bridged funds in its app.`;
-  if (c.includes('staking') || c.includes('restak')) return `Stake $${capital} of the chain's staking asset through ${name} and keep the receipt.`;
-  if (c.includes('perpetual') || c.includes('derivative')) return `Deposit $${capital} of USDC as margin on ${name} and open one small hedge.`;
-  if (c.includes('prediction')) return `Fund $${capital} and place one market position on ${name}.`;
-  if (c.includes('curator') || c.includes('allocator')) return `Deposit $${capital} into a ${name} vault on ${chain} and keep the shares.`;
-  if (c.includes('stable')) return `Mint or deposit $${capital} of the stable asset through ${name} on ${chain}.`;
-  if (c.includes('rwa')) return `Mint $${capital} of the protocol's yield asset on ${chain} and hold it.`;
-  if (c.includes('insurance')) return `Buy $${capital} of cover from ${name} on ${chain} and keep the policy.`;
-  return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
+  const fill = (t: string): string => t.replaceAll('${capital}', String(capital)).replaceAll('${name}', p.name).replaceAll('${chain}', chain);
+  for (const row of ACTIONS) {
+    if (row.words.some((w) => c.includes(w))) return fill(row.text);
+  }
+  return `Deposit $${capital} of USDC into ${p.name} on ${chain} and keep the position open.`;
 }
 
-/** The weekly repeat of the protocol's core action, on its second chain when it has one. */
+/** The weekly repeat of the protocol's core action, as a table keyed on the same category words. */
+const WEEKLY: Array<{ words: string[]; verb: string }> = [
+  { words: ['lend', 'cdp'], verb: 'adjust the supply position and borrow a small amount against it' },
+  { words: ['dex', 'yield'], verb: 'swap a small amount through the pool and re-add the liquidity' },
+  { words: ['bridge'], verb: 'bridge a small amount back and forth and use it in the app' },
+  { words: ['staking', 'restak'], verb: 'claim the staking rewards and restake them' },
+  { words: ['perpetual', 'derivative'], verb: 'close and reopen one small hedge' },
+];
+
 function weeklyActionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const second = p.chains.length > 1 ? p.chains[1]! : null;
   const c = (p.category ?? '').toLowerCase();
-  const verb =
-    c.includes('lend') || c.includes('cdp') ? 'adjust the supply position and borrow a small amount against it'
-    : c.includes('dex') || c.includes('yield') ? 'swap a small amount through the pool and re-add the liquidity'
-    : c.includes('bridge') ? 'bridge a small amount back and forth and use it in the app'
-    : c.includes('staking') || c.includes('restak') ? 'claim the staking rewards and restake them'
-    : c.includes('perpetual') || c.includes('derivative') ? 'close and reopen one small hedge'
-    : 'make one deposit, swap or vote in the app';
+  const hit = WEEKLY.find((row) => row.words.some((w) => c.includes(w)));
+  const verb = hit === undefined ? 'make one deposit, swap or vote in the app' : hit.verb;
   return second === null
     ? `Each week on ${chain}, ${verb} so the wallet shows fresh activity.`
     : `Each week, ${verb} on ${chain}, then repeat the same action once on ${second} so both chains show activity.`;
 }
 
 /**
- * A protocol's farm plan: seven steps, each an action with a cost and a time. The plan is derived from
+ * A protocol's farm plan: eight steps, each an action with a cost and a time. The plan is derived from
  * the protocol's own record (category, chains, TVL, age), never from a hand-written list of names.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
@@ -352,6 +388,11 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
       cost: 'under $3 of gas for the first transaction',
       time: '5 minutes',
+    },
+    {
+      text: `Read ${p.name}'s own docs and points page first, and note which actions earn points before you spend anything.`,
+      cost: 'no fee to read',
+      time: '15 minutes',
     },
     {
       text: action,
@@ -420,6 +461,7 @@ export function radarRow(row: BoardRow): RadarRow {
     growth_multiplier: row.model.growth_multiplier,
     maturity_multiplier: row.model.maturity_multiplier,
     chain_multiplier: row.model.chain_multiplier,
+    focus_multiplier: row.model.focus_multiplier,
   };
 }
 
