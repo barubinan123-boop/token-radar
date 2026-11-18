@@ -1,17 +1,19 @@
-// A working token-radar-01 entry (Node 22, standard library only).
+// Token Radar: the entrypoint of the token-radar-01 entry (Node 22, standard library only).
 //
-// The program reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every
-// pre-token protocol with the model in lib/model.ts, writes the ranked board to /output/board.json, and
-// copies this repository's dashboard/ and screenshots/ to /output. Last, it writes /output/dossier.json,
-// the summary the judge reads, with the vendored make.fun library.
+// It reads the sealed DefiLlama snapshot from /input/snapshot.json (or --input <file|dir>),
+// scores every pre-token protocol with the radar-2 model in lib/model.ts, writes the ranked
+// board to /output/board.json, and copies this repository's dashboard/ and screenshots/ to
+// /output. Last, it writes /output/dossier.json, the summary the judge reads, with the
+// vendored make.fun library (vendor/makefun-board.ts).
 //
-// The dashboard is a static page, no framework and no network: dashboard/index.html, dashboard/app.css
-// and dashboard/app.js read /output/data.js, which this program writes from the same board. A starting
-// point, not a winner: it covers the watchlist, states the model and gives every protocol a farm plan.
-// Change the model, the page or the plan; keep the gate's shape.
+// The dashboard is a static page, no framework and no network: dashboard/index.html,
+// dashboard/app.css and dashboard/app.js read /output/data.js, which this program writes
+// from the same board the gate checks, so the page and the board can never disagree.
 //
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
+//
+// The program is deterministic: two runs over the same snapshot write the same bytes.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
