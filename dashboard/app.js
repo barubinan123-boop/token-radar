@@ -351,7 +351,7 @@
     var m = DATA.model;
     return el('section', { class: 'panel model' },
       el('h2', { text: 'How implied value is computed' }),
-      el('p', { class: 'sub', text: 'Every row is scored by one function of the snapshot figures. No protocol name is special-cased, and no row is hand-picked.' }),
+      el('p', { class: 'sub', text: 'One function of the snapshot figures scores every row. No protocol name is special-cased, and no row is hand-picked.' }),
       el('div', { class: 'formula' },
         'implied = round( tvl_usd x ' + m.base_multiple + ' x (1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight + ') x (' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + ') x (1 + min(chains - 1, ' + m.chain_cap + ') x ' + m.chain_weight + ') x (1 + ' + m.focus_weight + ' x (1 - min(chains, ' + m.focus_chains + ') / ' + m.focus_chains + ')) )'
       ),
@@ -408,6 +408,8 @@
     }
   }
 
+  // Render the whole page from state: header, lede, controls, the active table,
+  // the model panel on the pre-token tab, and the detail drawer when a row is open.
   function render() {
     app.textContent = '';
     var shell = el('div', { class: 'shell' });
