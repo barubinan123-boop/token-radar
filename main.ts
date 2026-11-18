@@ -14,6 +14,9 @@
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
 //
 // The program is deterministic: two runs over the same snapshot write the same bytes.
+// That determinism is what the gate checks: the sandbox runs it twice and the two
+// outputs must be byte-identical, so nothing here reads the clock, the network or
+// any file outside the snapshot and this repository.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
