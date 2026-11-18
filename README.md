@@ -43,9 +43,10 @@ weekly repeat of the protocol's core action on a second chain when it has one.
 
 ## The dashboard
 
-`dashboard/` is a static page with no network: search, filter by category,
-sort by rank / name / TVL / growth / age, a detail view per protocol with
-the model's inputs and the farm plan, and a live-token view kept apart.
+`dashboard/` is a static page with no network: search, filter by category
+and by chain, sort by rank / name / TVL / growth / age, a detail view per
+protocol with the model's inputs and the farm plan, and a live-token view
+kept apart.
 
 ## Run it locally
 
