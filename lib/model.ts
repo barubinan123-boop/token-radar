@@ -347,7 +347,7 @@ const ACTIONS: Array<{ words: string[]; text: string }> = [
 /** The category's one action, in the words a farmer can follow. */
 function actionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const c = (p.category ?? '').toLowerCase();
-  const fill = (t: string): string => t.replaceAll('${capital}', String(capital)).replaceAll('${name}', p.name).replaceAll('${chain}', chain);
+  const fill = (t: string): string => t.replaceAll('${capital}', `$${capital}`).replaceAll('${name}', p.name).replaceAll('${chain}', chain);
   for (const row of ACTIONS) {
     if (row.words.some((w) => c.includes(w))) return fill(row.text);
   }

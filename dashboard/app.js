@@ -93,7 +93,7 @@
   ];
   function actionFor(p, capital, chain) {
     var c = (p.category || '').toLowerCase();
-    function fill(t) { return t.split('${capital}').join(String(capital)).split('${name}').join(p.name).split('${chain}').join(chain); }
+    function fill(t) { return t.split('${capital}').join('$' + String(capital)).split('${name}').join(p.name).split('${chain}').join(chain); }
     for (var i = 0; i < ACTIONS.length; i++) {
       var row = ACTIONS[i];
       for (var j = 0; j < row.words.length; j++) if (c.indexOf(row.words[j]) >= 0) return fill(row.text);
