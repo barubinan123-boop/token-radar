@@ -14,17 +14,21 @@
   var state = { q: '', category: 'all', chain: 'all', tab: 'pre-token', sort: 'implied', dir: -1, selected: null };
 
   var usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  // Money, compact: billions and millions get one or two decimals, the rest are plain.
+  var USD_STEPS = [[1e9, 1e9, 2, 'B'], [1e6, 1e6, 1, 'M'], [1e3, 1e3, 0, 'K']];
   function fmtUsd(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
-    if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
-    if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-    if (Math.abs(n) >= 1e3) return '$' + Math.round(n / 1e3) + 'K';
+    for (var i = 0; i < USD_STEPS.length; i++) {
+      var step = USD_STEPS[i];
+      if (Math.abs(n) >= step[0]) return '$' + (n / step[1]).toFixed(step[2]) + step[3];
+    }
     return usd.format(n);
   }
   function fmtPct(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
     return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
   }
+  // Age in years past a year, in days below it, unknown when the snapshot never listed it.
   function fmtAge(days) {
     if (days === null || days === undefined) return 'unknown';
     if (days >= 365) return (days / 365).toFixed(1) + 'y';
@@ -44,15 +48,19 @@
     return Math.max(1, Math.round(row.tvl_usd * model.base_multiple * growthMult * maturity * chainMult * focusMult));
   }
 
+  // A tiny element builder: attrs set class, text, html, on* listeners or attributes,
+  // and the rest of the arguments are children, strings, nodes or arrays of them.
   function el(tag, attrs) {
     var node = document.createElement(tag);
     if (attrs) {
       Object.keys(attrs).forEach(function (k) {
-        if (k === 'class') node.className = attrs[k];
-        else if (k === 'text') node.textContent = attrs[k];
-        else if (k === 'html') node.innerHTML = attrs[k];
-        else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2), attrs[k]);
-        else if (attrs[k] !== null && attrs[k] !== undefined) node.setAttribute(k, attrs[k]);
+        var v = attrs[k];
+        if (v === null || v === undefined) return;
+        if (k === 'class') node.className = v;
+        else if (k === 'text') node.textContent = v;
+        else if (k === 'html') node.innerHTML = v;
+        else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2), v);
+        else node.setAttribute(k, v);
       });
     }
     for (var i = 2; i < arguments.length; i++) {
@@ -171,15 +179,19 @@
       return hay.indexOf(q) >= 0;
     });
   }
+  // Sort keys: each names how to read the value off a row, with a fallback for missing data.
+  var SORT_KEYS = {
+    name: function (r) { return r.name.toLowerCase(); },
+    tvl: function (r) { return r.tvl_usd; },
+    growth: function (r) { return r.change_7d === null ? -Infinity : r.change_7d; },
+    age: function (r) { return r.age_days === null ? Infinity : r.age_days; },
+    implied: function (r) { return r.implied_value_usd; }
+  };
   function sortedRows(list) {
-    var key = state.sort;
+    var read = SORT_KEYS[state.sort] || SORT_KEYS.implied;
     return list.slice().sort(function (a, b) {
-      var av, bv;
-      if (key === 'name') { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
-      else if (key === 'tvl') { av = a.tvl_usd; bv = b.tvl_usd; }
-      else if (key === 'growth') { av = a.change_7d === null ? -Infinity : a.change_7d; bv = b.change_7d === null ? -Infinity : b.change_7d; }
-      else if (key === 'age') { av = a.age_days === null ? Infinity : a.age_days; bv = b.age_days === null ? Infinity : b.age_days; }
-      else { av = a.implied_value_usd; bv = b.implied_value_usd; }
+      var av = read(a);
+      var bv = read(b);
       if (av < bv) return -state.dir;
       if (av > bv) return state.dir;
       return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
