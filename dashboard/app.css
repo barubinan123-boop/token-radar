@@ -1,7 +1,9 @@
 /* Token Radar's theme. The palette, two radii and two families are the whole style;
    everything else is spacing, a hairline and a type step.
    Sections below: page shell, header and lede, controls, board table, model panel,
-   detail drawer, small screens. */
+   detail drawer, small screens.
+   The theme is plain on purpose: the board's numbers do the talking, and the page
+   stays readable at a glance on a phone as well as on a desktop. */
 :root {
   --canvas: #f2f5f3;
   --surface: #ffffff;
