@@ -393,6 +393,7 @@
         el('div', null, el('span', { text: 'Focus multiplier' }), el('b', { class: 'num', text: String(row.focus_multiplier) })),
         el('div', null, el('span', { text: 'Implied value' }), el('b', { class: 'num', text: fmtUsd(row.implied_value_usd) }))
       ),
+      // The page recomputes the row from the same figures and says whether it agrees with the board.
       el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. The page recomputes this row as ' + fmtUsd(impliedOf(row, DATA.model)) + (impliedOf(row, DATA.model) === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' })
     ));
     dialog.appendChild(el('section', { class: 'detail-section' },
@@ -429,6 +430,7 @@
 
   readHash();
   render();
+  // Escape closes the drawer from anywhere on the page, not only from its button.
   window.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && dialog.open) dialog.close();
   });
