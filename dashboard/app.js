@@ -253,6 +253,7 @@
     );
   }
 
+  // A sortable column header: click once to sort by it, again to flip the direction.
   function sortHeader(key, label) {
     return el('th', { scope: 'col' },
       el('button', { type: 'button', onclick: function () { if (state.sort === key) state.dir = -state.dir; else { state.sort = key; state.dir = -1; } render(); } },
@@ -359,6 +360,8 @@
     );
   }
 
+  // The detail drawer: one <dialog> reused for every protocol, cleared and refilled
+  // on open, and closing it clears the selection from the URL hash.
   var dialog = el('dialog', { class: 'detail', id: 'detail', 'aria-labelledby': 'detail-title' });
   dialog.addEventListener('close', function () { state.selected = null; writeHash(); });
 
